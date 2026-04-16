@@ -1,0 +1,23 @@
+{
+  "name": "situation-room-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "author": "dofbi & AfricTivistes",
+  "description": "Infrastructure Civic Tech open source - Africa ElectionLab",
+  "scripts": {
+    "install:all": "pnpm install",
+    "dev:infra": "docker-compose -f docker-compose.dev.yml up -d",
+    "dev:public": "pnpm --filter public dev",
+    "dev:dashboard": "pnpm --filter dashboard dev",
+    "dev:webhooks": "pnpm --filter webhooks dev",
+    "dev": "pnpm --parallel --filter \"./apps/**\" dev",
+    "build": "pnpm --recursive run build",
+    "seed": "node scripts/seed.js",
+    "typecheck": "pnpm --filter dashboard typecheck && pnpm --filter webhooks typecheck",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}

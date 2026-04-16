@@ -1,0 +1,130 @@
+version: '3.8'
+
+# =============================================================
+# Docker Compose – PRODUCTION
+# Situation Room / Africa ElectionLab
+# =============================================================
+# Usage :
+#   cp .env.example .env && nano .env  (modifier les mots de passe !)
+#   docker-compose up -d
+# =============================================================
+
+services:
+  # ── Base de données PostgreSQL 16 ──────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: situation-room-db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    # En production, ne pas exposer le port PostgreSQL publiquement
+    # expose: ["5432"]
+    networks:
+      - internal
+
+  # ── NocoDB – Interface admin + API REST/GraphQL ─────────────
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: situation-room-nocodb
+    environment:
+      NC_DB: "pg://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}"
+      NC_AUTH_JWT_SECRET: ${JWT_SECRET}
+      # Désactiver l'inscription publique en production
+      NC_DISABLE_TELE: "true"
+    volumes:
+      - nocodb_data:/usr/app/data
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - internal
+      - web
+
+  # ── Serveur de webhooks Node.js ─────────────────────────────
+  webhooks:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.webhooks
+    container_name: situation-room-webhooks
+    environment:
+      PORT: 3000
+      NOCODB_API_URL: http://nocodb:8080/api/v1/db/data/v1/${DB_NAME}
+      NOCODB_API_TOKEN: ${NOCODB_API_TOKEN}
+    restart: unless-stopped
+    networks:
+      - internal
+      - web
+
+  # ── Site public Astro (HTML statique servi par Nginx) ───────
+  public:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.public
+    container_name: situation-room-public
+    restart: unless-stopped
+    networks:
+      - web
+
+  # ── Dashboard Refine.js (HTML statique servi par Nginx) ─────
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: situation-room-dashboard
+    environment:
+      VITE_API_URL: https://${DOMAIN}/nocodb/api/v1/db/data/v1/${DB_NAME}
+    restart: unless-stopped
+    networks:
+      - web
+
+  # ── Reverse Proxy Nginx ─────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: situation-room-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      # Certificats SSL (Let's Encrypt via Certbot)
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - nocodb
+      - webhooks
+      - public
+      - dashboard
+    restart: unless-stopped
+    networks:
+      - web
+
+  # ── Certbot – Renouvellement SSL automatique ────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: situation-room-certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Renouvellement automatique toutes les 12 heures
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - web
+
+volumes:
+  pgdata:
+  nocodb_data:
+  certbot_certs:
+  certbot_www:
+
+networks:
+  internal:
+    driver: bridge
+    internal: true   # Réseau privé, non accessible depuis l'extérieur
+  web:
+    driver: bridge

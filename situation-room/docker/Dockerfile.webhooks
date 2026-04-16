@@ -1,0 +1,38 @@
+# =============================================================
+# Dockerfile – Serveur Webhooks Node.js
+# Build multi-stage pour une image de production légère
+# =============================================================
+
+# Étape 1 : Construction TypeScript → JavaScript
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+COPY package.json pnpm-workspace.yaml ./
+COPY packages/shared ./packages/shared
+COPY apps/webhooks ./apps/webhooks
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter webhooks build
+
+# Étape 2 : Image de production (sans les devDependencies)
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+# Copier uniquement les fichiers nécessaires à l'exécution
+COPY --from=builder /app/apps/webhooks/dist ./dist
+COPY --from=builder /app/apps/webhooks/package.json ./
+
+RUN pnpm install --prod --frozen-lockfile
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js"]

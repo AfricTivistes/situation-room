@@ -1,0 +1,22 @@
+{
+  "name": "webhooks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Réception multi-canaux : Telegram, SMS, WhatsApp",
+  "scripts": {
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "@situation-room/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.0"
+  }
+}
